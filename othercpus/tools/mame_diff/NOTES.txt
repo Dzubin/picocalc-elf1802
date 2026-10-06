@@ -1,0 +1,15 @@
+Differential test of cpu6803.c against MAME's 6800 family opcode code (used once, 2026-10-05).
+
+MAME's sources are BSD-3-Clause and are NOT part of this project; download them into a scratch folder (VEC in
+gen.py): from the mamedev/mame repository, src/devices/cpu/m6800/m6800.cpp, 6800ops.hxx, m6801.cpp, m6800.h.
+
+  python gen.py            writes harness_body.inc (MAME's macros, handlers and the 6803 opcode table
+                           built into a small C++ class)
+  then join harness_body.inc and driver.inc into harness.cpp (replace the doubled percent signs in
+  driver.inc by single ones; see the history in docs/RESEARCH.md) and build with
+      g++ -std=c++17 -O1 -w -I<project> harness.cpp cpu6803.o -o diffrun   (cpu6803.o from gcc -c cpu6803.c)
+  ./diffrun 4000           runs 4000 random states per opcode.
+
+Result on 2026-10-05: 896,000 cases, no differences except the five illegal immediate-store opcodes
+(87, 8F, C7, CD, CF) that this core traps and MAME does not. The same method is the plan for the 6809 core.
+This folder is scratch tooling, not part of any build.

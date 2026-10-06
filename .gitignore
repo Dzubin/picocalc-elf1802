@@ -1,0 +1,39 @@
+# Build output
+/build/
+*.uf2
+*.elf
+*.bin
+*.hex
+*.map
+*.dis
+
+# Bundled source archives (fetch the Pico SDK / starter separately)
+*.zip
+
+# Editor / OS cruft
+.DS_Store
+Thumbs.db
+
+# Local AI-assistant notes, not for the public repo
+CLAUDE.md
+
+# Extra build directories (RP2350 / RP2040 / Windows / Linux)
+/build-*/
+
+# Desktop (SDL2) build outputs copied to the top-level folder
+*.exe
+/elf1802-Linux
+/libSDL2-2.0.so.0
+
+# The demo images in programs/ are checked in (on a case-insensitive system the
+# *.bin pattern above would catch .BIN too)
+!/programs/*.BIN
+
+# The Emma 02 collection in programs/emma02/ and the 1977 article's starship are
+# other people's programs, included as abandonware (see the README). Their .BIN
+# and .HEX images must be let through the patterns above.
+!/programs/emma02/*.BIN
+!/programs/emma02/*.HEX
+
+# Working notes from developing the program, not part of the release
+/docs/PROJECT-STATUS.md
