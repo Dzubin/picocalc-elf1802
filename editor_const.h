@@ -31,7 +31,7 @@
 /* The command menu (ui_menu): a letter only where it is not a key of the keypad
  * screen (0-9, A-F, R, L, M, I); the other rows are chosen with the arrow keys. */
 #define EDITOR_MENU_TITLE   "EDITOR"
-#define EDITOR_MENU_HINT    "UP/DOWN  ENTER: choose  ESC: back to text"
+#define EDITOR_MENU_HINT    "UP/DOWN  ENTER: choose  ESC: back"
 #define EDITOR_MENU_ASSEMBLE    0
 #define EDITOR_MENU_GO          1
 #define EDITOR_MENU_DEBUG       2
