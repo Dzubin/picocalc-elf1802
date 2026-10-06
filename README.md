@@ -13,12 +13,31 @@ run original Elf programs from the 1970s and 1980s, so every instruction is
 emulated and the machine is stepped one machine cycle at a time, with the 1861
 kept in step to the cycle.
 
-*Status: working. The emulator is tested on a PC (about 1,160 checks, see
+*Status: working. The emulator is tested on a PC (about 4,000 checks, see
 "Testing the emulator" below) and the PicoCalc builds for the Pico 2 (RP2350) and
 the Pico (RP2040) both run on the hardware: the emulation takes about a third of
 the Pico 2's processor time and 65 to 80 percent of the Pico's, so both keep up
-with a real Elf (the registers screen shows SPEED and EMU). The Windows and Linux
-builds are written but have not been built or tried yet.*
+with a real Elf (the registers screen shows SPEED and EMU). The Windows build
+works; the Linux build is written but has not been built or tried yet.*
+
+## Screenshots
+
+These are from the Windows build; the PicoCalc shows the same 320 x 320 screen.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/Screenshots/panel-idle.png" alt="The Elf II front panel at power-on"><br>The Elf II front panel at power-on: the hex keypad, two hex displays, the Q LED, the RUN, LOAD and M/P switches and the IN button. The top half is the 1861 picture (blank until a program draws on it).</td>
+<td width="50%"><img src="docs/Screenshots/panel-running.png" alt="A program running with a picture"><br>The random-tone program running: RUN is up, the displays show the byte, and the 1861 draws a block where that byte points.</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/Screenshots/menu.png" alt="The ESC menu"><br>The <code>ESC</code> menu reaches everything else: files on the SD card, the editor, the debugger, help, memory protect, keyboard, sound, picture or VDU, and the 1861.</td>
+<td width="50%"><img src="docs/Screenshots/editor.png" alt="The editor and assembler"><br>The editor and assembler, here with the source of the random-tone program.</td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/Screenshots/debugger.png" alt="The debugger"><br>The debugger: the registers, a listing from the PC with branch targets marked, a dump of memory, and single-step and breakpoint keys.</td>
+<td width="50%"></td>
+</tr>
+</table>
 
 ## What is emulated
 
