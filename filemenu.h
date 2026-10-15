@@ -27,6 +27,8 @@ typedef struct {
     bool sound_on;
     bool ascii_mode;                /* the keys go to the ASCII keyboard         */
     bool vdu_shown;                 /* the top of the screen shows the VDU       */
+    uint32_t serial_baud;           /* the serial line on Q and EF3: its speed, 0 for off */
+    bool serial_inverted;           /* Q is the opposite of the line level       */
 } filemenu_machine_t;
 
 /* What the caller is to do besides what the flags below say. */
@@ -37,6 +39,8 @@ typedef struct {
 #define FILEMENU_ACT_KEYBOARD   4   /* the hex keypad <-> the ASCII keyboard     */
 #define FILEMENU_ACT_SOUND      5   /* sound on or off                           */
 #define FILEMENU_ACT_VIEW       6   /* the VDU <-> the picture (or registers)    */
+#define FILEMENU_ACT_SERIAL     7   /* the next speed of the serial line, or off  */
+#define FILEMENU_ACT_POLARITY   8   /* turn the serial line's polarity round      */
 
 typedef struct {
     int  action;                    /* FILEMENU_ACT_*                            */
@@ -73,5 +77,9 @@ void filemenu_run(const program_target_t *t, const filemenu_machine_t *m,
 bool filemenu_pick_file(const char *title, int kind, char *name);
 bool filemenu_ask_name(const char *title, const char *ext, char *name, size_t size);
 const char *filemenu_error_text(int rc);
+
+/* The ROM images screen on its own (a machine with a ROM at 8000 shows it from its
+ * own menu). */
+void filemenu_rom_images(const program_target_t *t);
 
 #endif /* FILEMENU_H */

@@ -14,8 +14,9 @@
 #define SPLASH_ROW_ABOUT_1  11
 #define SPLASH_ROW_ABOUT_2  12
 #define SPLASH_ROW_AUTHOR   15
+#define SPLASH_ROW_CARD     25
 #define SPLASH_ROW_BOOT     26
 #define SPLASH_ROW_KEYS     28
-#define SPLASH_KEYS_TEXT    "In the Elf: ESC menu   F1 help"
+#define SPLASH_KEYS_TEXT    "In either: ESC menu, T = this screen"
 
 #endif /* TITLE_CONST_H */

@@ -117,3 +117,19 @@ void membus_write_protect(membus_t *bus, uint32_t addr, uint32_t size, bool prot
             p->write_ptr = protect ? NULL : p->storage;
     }
 }
+
+int membus_page_kind(const membus_t *bus, unsigned page)
+{
+    const membus_page_t *p;
+
+    if (page >= MEMBUS_PAGES)
+        return MEMBUS_KIND_NONE;
+    p = &bus->page[page];
+    if (p->storage)
+        return MEMBUS_KIND_RAM;
+    if (p->write_fn || p->read_fn)
+        return MEMBUS_KIND_DEVICE;
+    if (p->read_ptr)
+        return MEMBUS_KIND_ROM;
+    return MEMBUS_KIND_NONE;
+}

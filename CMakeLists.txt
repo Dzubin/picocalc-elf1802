@@ -57,6 +57,11 @@ add_executable(picocalc-elf1802
     cdp1861.c
     elf.c
     rom.c
+    memview.c
+    serial.c
+    mcard.c
+    mcardui.c
+    terminal.c
     target.c
     membus.c
     hexfile.c
@@ -110,8 +115,12 @@ target_link_libraries(picocalc-elf1802
 # always says which board it was built for.
 if(PICO_PLATFORM MATCHES "^rp2040")
     set(CHIP_NAME RP2040)
+    # 264 KB of RAM: the Elf gets 32K at most (the menu offers 16K and 32K)
+    target_compile_definitions(picocalc-elf1802 PRIVATE ELF_RAM_SIZE=32768)
 elseif(PICO_PLATFORM MATCHES "^rp2350")
     set(CHIP_NAME RP2350)
+    # 520 KB of RAM: the assembler, the listing and the debugger work on all 64K
+    target_compile_definitions(picocalc-elf1802 PRIVATE ASM_IMAGE_SIZE=0x10000)
 else()
     set(CHIP_NAME ${PICO_PLATFORM})
 endif()

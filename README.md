@@ -6,7 +6,7 @@ Author: Thomas Dzubin    License: MIT    Version: see `VERSION` in
 [`elf1802_const.h`](elf1802_const.h)
 
 A **COSMAC Elf** for the ClockworkPi **PicoCalc** (Raspberry Pi Pico or Pico 2),
-also buildable for Windows and Linux: an RCA **CDP1802** microprocessor with 16K
+also buildable for Windows and Linux: an RCA **CDP1802** microprocessor with 64K
 of RAM, a hexadecimal keypad, two hex displays, the Q LED, and the **CDP1861
 "Pixie"** video chip, whose picture fills the top of the screen. The aim is to
 run original Elf programs from the 1970s and 1980s, so every instruction is
@@ -51,7 +51,7 @@ These are from the Windows build; the PicoCalc shows the same 320 x 320 screen.
   DMA byte lands depends on which cycle it arrived in, so a program that is a
   cycle out of step shows the same shifted picture it would have on a real Elf.
   INP 1 turns the display on, OUT 1 turns it off.
-- **The Elf II board**: 16K RAM at 0000 to 3FFF, the keypad's two-digit latch
+- **The Elf II board**: 64K RAM at 0000 to FFFF (the VDU and any ROM images sit over it), the keypad's two-digit latch
   read by INP 4, the IN button on EF4 (it pulls the pin low; also the DMA-IN
   request in load mode),
   two hex displays on OUT 4, the Q LED, the RUN, LOAD and memory protect
@@ -115,7 +115,7 @@ everything else.
 |  the 1861 picture, 64 x 128 pixels,      |  320 x 128, each pixel 5 wide
 |  drawn 5 pixels wide and 1 tall          |  (or the 32 x 16 VDU, 256 x 160)
 +------------------------------------------+
-  ELF1802  RCA 1802 + 1861 + VDU, 16K RAM
+  ELF1802  RCA 1802 + 1861 + VDU, 64K RAM
    [ 4 ][ 2 ]   [Q]          RUN  [R] UP
      DATA                    LOAD [L] DOWN
                              MP   [M] OFF
@@ -147,7 +147,10 @@ else is reached from the menu (`ESC`). Only the unshifted function keys `F1` to 
 | `F5` | sends ESC (1B) to the program from the ASCII keyboard |
 | `ESC` | **the menu**, the way to everything else (below) |
 | `~` (SHIFT + backtick) | reboots into BOOTSEL (USB drive) mode, from anywhere |
-| any key / `ESC` or `Q` | on the title screen: start (the Elf is as you left it) / leave for the UF2 Loader |
+| `N` or any other key | on the title screen: the Netronics Elf II (it is as you left it) |
+| `C` | on the title screen: the 1802 Membership Card (see below) |
+| `ESC` or `Q` | on the title screen: leave for the UF2 Loader |
+| `ESC`, then `T` | in the Elf II or the Membership Card: back to the title screen |
 | `B` | on the title screen: start the Elf afresh with the random-tone program in memory (so `ESC`, `T`, `B` brings it back, but anything unsaved is lost) |
 
 **The menu (`ESC`)** is a list that you move through with `UP` and `DOWN` and choose from with `ENTER`;
@@ -271,7 +274,7 @@ PORT    EQU   4             ; a named value
   target must be on the same 256-byte page as its operand byte, and the
   assembler says so if it is not. Use `LBR` and the other long branches to cross
   a page.
-- Bytes may not overlap, and the code has to fit the 16K of RAM.
+- Bytes may not overlap, and the code has to fit the assembler's 16K window (`ASM_IMAGE_SIZE`).
 
 ## The debugger (ESC menu, `G`)
 
@@ -309,17 +312,38 @@ long branch 3) and the total since reset. The dump is eight bytes a line from
 R(X). Stopping is always at the end of an instruction, so what you see is a whole
 number of instructions. The 1861 picture is frozen while stopped.
 
+
+## The 1802 Membership Card (`C` on the title screen)
+
+A second machine, Lee Hart's **1802 Membership Card** (Rev L; see [Lee Hart's 1802 Membership Card project](https://www.sunrise-ev.com/1802.htm) and the [Membership Card pages at Retrotechnology](https://www.retrotechnology.com/memship/memship.html), where his manual and the software are), runs beside the Elf II and shares only the
+CPU core, the serial line, the terminal, the ROM images and the memory map code; the Elf II does not change.
+It is a 4 MHz 1802 with 32K of RAM at 0000, ROM images fitted from 8000, a serial terminal on Q (out) and
+EF3 (in) at 4800 baud, and a front panel: eight data switches (`INP 4`), eight data LEDs and a hex display
+(`OUT 4`), the IN button on EF4, and the WAIT, CLR and READ/WRITE switches.
+
+The top of the screen is the 40 x 16 terminal; the panel is under it. Keys: `0` to `7` flip the data
+switches, `W`, `C` and `R` flip WAIT, CLR and READ/WRITE, `ENTER` is the IN button, `F4` sends the keys to
+the terminal instead (and back), `F5` sends ESC, `ESC` opens the menu (serial speed and polarity, ROM
+images, memory map, power on again). As on the real card it starts with CLR down: flip `C` up to run. To
+toggle a program in, put CLR down and WAIT down (LOAD), set the data switches and press IN; with READ/WRITE
+down IN shows the byte at the address instead. Holding IN while CLR goes up starts the program at 8000.
+
+The card has a small serial monitor of its own in ROM at 8000 (`programs/MCMON.ASM`, made into
+`mcard_monitor.h` by `programs/make_mcmon.c`): it prints its name and echoes what you type. Put your own
+`.ROM` file in the `ELF1802` folder and fit it from the menu to replace it. Q is inverted (Rev J and later);
+the menu can turn it round for earlier front panels. The input port number for the data switches (4) is
+assumed to match `OUT 4` and is not confirmed. The checks are in `tests/test_mcard.c`.
 ## Saving and loading programs
 
 `ESC` opens the menu. **Save** asks for a name (letters and digits, up to 8) and
-writes the whole 16K RAM to `/ELF1802/NAME.BIN` on the SD card (FAT32). **Open**
+writes the RAM, up to the last byte that is not zero (rounded up to 256 bytes), to `/ELF1802/NAME.BIN` on the SD card (FAT32). **Open**
 lists the `.BIN` and `.HEX` files in that folder (starting on the file you had
 highlighted last time); choosing one loads it at
 address 0000 (a `.HEX` file at the addresses it gives), fills the rest of RAM
 with zeros and puts the machine in RESET, ready to run. A `.BIN` file is a raw
 memory image and a `.HEX` file is Intel HEX text (up to about 48 KB), so
 programs made on a PC can be copied into the folder; HEX data for addresses
-above the 16K RAM (a ROM, say) is left out and counted in the message.
+above the 64K RAM is left out and counted in the message.
 
 **Open also lists `.ASM` source files** (assembly text, as the editor reads it; see
 "The editor and assembler"). Choosing one reads it into the editor in place of the text
@@ -460,9 +484,9 @@ latch that can be read again and again; EF3 goes low when a new key arrives and 
 once `INP 7` has taken it, and the next waiting key shows about 20 ms later. Use
 `F4` on the PicoCalc to send the keys to it.
 
-**Memory.** RAM is 0000 to 3FFF. The VDU's video RAM is at E000 to E3FF (32 x 16
-cells; see `elf_const.h` for the cell format). Reads from anywhere else give 00 and
-writes are ignored. Memory protect stops writes to the RAM (not to the VDU).
+**Memory.** RAM is 0000 to FFFF (64K; the menu's `Z` row chooses 16K, 32K or 64K, and `U` shows the memory map). The VDU's video RAM is at E000 to E3FF, over the RAM there (32 x 16
+cells; see `elf_const.h` for the cell format). ROM images are fitted over the RAM from the menu.
+Memory protect stops writes to the RAM (not to the VDU).
 
 **Reset and the modes.** RESET clears I, N and Q, sets IE, turns the 1861 off, and
 the next start has X = P = 0 and R0 = 0. An `INP` or `OUT` with any other port number
@@ -514,7 +538,11 @@ rom.c / rom.h             ROM images: up to two files fitted over any machine's 
                           ELF1802/ROMS.CFG (rom_const.h)
 membus.c / membus.h       the memory map any machine uses: 64K in 256-byte pages of RAM, ROM, a device or
                           nothing, with write protect (portable C; membus_const.h)
-hexfile.c / hexfile.h     Intel HEX loading (portable C)
+hexfile.c / hexfile.h     Intel HEX loading, a piece at a time (portable C)
+serial.c / serial.h       the bit-banged serial line on Q and EF3 (portable C; serial_const.h)
+mcard.c / mcard.h         the 1802 Membership Card board (mcard_const.h); mcardui.c is its screen and keys (mcardui_const.h)
+terminal.c / terminal.h   the 40 x 16 text terminal for what the program sends down it (terminal_const.h)
+memview.c / memview.h     the memory map screen (memview_const.h)
 qaudio.c / qaudio.h       Q as sound: samples of the Q line, a DC blocker, a FIFO (portable C)
 disasm1802.c / .h         the 1802 disassembler for the debugger (portable C); disasm_const.h has its tables
 elf_const.h               constants of the emulated machine: clock, modes, ports, 1861 timing
@@ -593,7 +621,7 @@ The emulator files need no PicoCalc parts, so the tests build with any C
 compiler:
 
 ```bash
-gcc -Wall -Wextra -I. tests/test_emulator.c cpu1802.c cdp1861.c elf.c membus.c target.c rom.c hexfile.c qaudio.c disasm1802.c asm_core.c isa_1802.c source_gen.c -o test_emulator
+gcc -Wall -Wextra -I. tests/test_emulator.c cpu1802.c cdp1861.c elf.c membus.c target.c rom.c hexfile.c qaudio.c serial.c disasm1802.c asm_core.c isa_1802.c source_gen.c -o test_emulator
 ./test_emulator
 ```
 
@@ -621,7 +649,7 @@ how to write an instruction as text and which way the program goes after it (for
 code/data trace of the listing), how its numbers are spelled, and how to turn one line of assembly into
 bytes (using the assembler's `asm_*` helpers for the operands). `isa_1802.c` is the one in use. The assembler
 works in a window of the machine's address space that it is given (`asm_assemble(isa, asm, base, size, ...)`;
-the buffer is `ASM_IMAGE_SIZE`, 16 KB, the Elf's RAM).
+the buffer is `ASM_IMAGE_SIZE`, 16 KB, the part of the RAM that can be assembled and listed).
 
 Work on other processors and machines (the 6502, 8080, Z80, 6800, 6803 and 6809 descriptions, the MC6803 and
 Z80 cores, the MC6847 video chip, the TRS-80 MC-10) is kept apart in the `othercpus/` folder. None of it is in the
@@ -640,6 +668,8 @@ files, this `README.md`) are released under the MIT License, see
 
 ### Third-party
 
+The Membership Card machine is modelled on **Lee Hart's 1802 Membership Card**: [Lee Hart's 1802 Membership Card project](https://www.sunrise-ev.com/1802.htm) (his site, with the Rev L manual) and the [Membership Card pages at Retrotechnology](https://www.retrotechnology.com/memship/memship.html) kept by Herb Johnson. The design and the manual are Lee Hart's; this program only emulates the board, from his published description.
+
 `picocalc-text-starter-main/` is a vendored copy of
 [**picocalc-text-starter**](https://github.com/BlairLeduc/picocalc-text-starter)
 by Blair Leduc (the LCD, south-bridge keyboard, SD card and FAT32
@@ -652,8 +682,20 @@ The vendored copy is unchanged except for **one small fix** in
 `picocalc-text-starter-main/drivers/fat32.c`: `get_next_free_cluster()` now
 advances its search hint past the cluster it just handed out; without that,
 every later allocation re-scans the clusters already given out, and a long
-sequential write to the SD card looks hung. Everything else is exactly as
-downloaded.
+sequential write to the SD card looks hung. Apart from the two further fixes below, everything else is exactly as downloaded.
+
+Two more small fixes were made in `picocalc-text-starter-main/drivers/` after that one.
+In `fat32.c`, `fat32_dir_read()` skips deleted entries before it looks at long-name
+parts and bounds-checks the long-name offset (a deleted long-name part used to be read
+as a live one and wrote 13 bytes at `filename + 468` of a 256-byte stack buffer), and
+`link_entry()` compares the 0xE5 deleted marker as an unsigned byte. In `sdcard.c`, the
+wait for a busy card is timed by the clock (0.5 s) and not by counting 10000 bytes,
+every command except CMD0 waits for the card first, and a write returns an error if the
+card is still busy after it (without that, a card that was still programming a block
+ignored the next command, and reads and writes failed on good sectors). Both were sent
+to the author as pull requests
+([#32](https://github.com/BlairLeduc/picocalc-text-starter/pull/32) and
+[#33](https://github.com/BlairLeduc/picocalc-text-starter/pull/33)).
 
 The vendored `lcd_putstr()` does not stop at the right edge of the screen, so
 every string this program draws is cut to fit the 40-column text grid before

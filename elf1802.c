@@ -3,7 +3,7 @@
  *  ===========================================
  *
  *  A COSMAC Elf on the ClockworkPi PicoCalc: an RCA CDP1802 microprocessor
- *  with 16K of RAM, a hexadecimal keypad, two hex displays, the Q LED, and a
+ *  with 64K of RAM, a hexadecimal keypad, two hex displays, the Q LED, and a
  *  CDP1861 "Pixie" video chip whose picture fills the top of the screen. The
  *  machine is emulated to the machine cycle (see cpu1802.c, cdp1861.c and
  *  elf.c, which are plain portable C), so programs written for the real Elf
@@ -90,6 +90,8 @@
 #include "title.h"        /* the title screen                                 */
 #include "ui.h"           /* text, keyboard, the ways out                     */
 #include "vdu.h"          /* the VDU on the screen                            */
+#include "terminal.h"     /* the serial terminal in the top of the screen     */
+#include "mcardui.h"      /* the 1802 Membership Card                         */
 
 /* the board's samples are played at the rate the platform plays them */
 _Static_assert(QAUDIO_RATE == PLAT_AUDIO_RATE, "sample rates differ");
@@ -106,6 +108,7 @@ static bool sw_run, sw_load, sw_mp;       /* the front-panel switches        */
 static bool     view_vdu;                 /* the top of the screen shows the VDU */
 static uint32_t vdu_writes_seen;
 static bool     ascii_mode;               /* keys go to the ASCII keyboard   */
+static int      serial_step;              /* the serial line: 0 off, else a speed on the menu */
 static bool     key_down[256];            /* keys held, by lowercase code    */
 static uint32_t key_press_ms[256];        /* when each was last pressed      */
 static bool     sound_on = SOUND_ON_AT_START;
@@ -132,6 +135,8 @@ static void run_computer(void);
 static void power_on(void);
 static void screen_setup(void);
 static void apply_switches(void);
+static uint32_t serial_baud(void);
+static void serial_update(void);
 static int  handle_key(uint16_t e);
 static int  hex_value(uint8_t code);
 
@@ -181,7 +186,11 @@ int main(void)
             ui_go_loader();      /* does not return */
         if (key == KEY_BOOT_PROGRAM || key == KEY_BOOT_PROGRAM - 'a' + 'A')
             power_on();       /* B: the boot program again, the machine afresh */
-        run_computer();       /* returns when the menu says to leave */
+        if (key == KEY_MEMBERSHIP_CARD || key == KEY_MEMBERSHIP_CARD - 'a' + 'A') {
+            mcardui_run();    /* C: the 1802 Membership Card, back to the title when done */
+            continue;
+        }
+        run_computer();       /* N or any other key: the Elf II; returns when the menu says to leave */
     }
 }
 
@@ -191,10 +200,15 @@ int main(void)
  * have been opened. */
 static void power_on(void)
 {
+    uint32_t ram_size = elf.ram_size;   /* the RAM fitted stays as it was */
+
     elf_init(&elf);
+    elf_program_target(&elf, &target);
+    elf_set_ram_size(&elf, ram_size);
     elf_load_image(&elf, BOOT_PROGRAM, BOOT_PROGRAM_SIZE);
     editor_preload(BOOT_SOURCE, BOOT_SOURCE_NAME);
     sw_run = sw_load = sw_mp = false;
+    serial_step = 0;                    /* the serial line is off after a power-on */
     apply_switches();
     ascii_mode = false;
     view_vdu = false;
@@ -275,6 +289,8 @@ static void run_computer(void)
                     state.sound_on = sound_on;
                     state.ascii_mode = ascii_mode;
                     state.vdu_shown = view_vdu;
+                    state.serial_baud = serial_baud();
+                    state.serial_inverted = elf.serial.inverted;
                     sound_stop();
                     filemenu_run(&target, &state, &menu);
                     if (menu.leave)
@@ -352,6 +368,7 @@ static void run_computer(void)
         /* the Q line as sound, the picture and the panel */
         uint32_t now_ms = plat_now_ms();
         sound_update();
+        serial_update();
 
         /* the top of the screen follows the program: the 1861 picture when the
          * chip comes on, the VDU when its memory is written to */
@@ -364,6 +381,11 @@ static void run_computer(void)
             if (debugger_dirty() || now_ms - panel_ms >= PANEL_REFRESH_MS) {
                 panel_ms = now_ms;
                 debugger_draw();
+            }
+        } else if (elf.serial.enabled) {        /* the terminal fills the top area */
+            if (now_ms - vdu_ms >= VDU_DRAW_MS) {
+                vdu_ms = now_ms;
+                terminal_draw();
             }
         } else {
             if (video_came_on)
@@ -444,7 +466,7 @@ static void lower_setup(void)
         panel_update(true);
         return;
     }
-    ui_put_at(0, ROW_MODE, "ELF1802  RCA 1802 + 1861 + VDU, 16K RAM", COL_CYAN);
+    ui_put_at(0, ROW_MODE, "ELF1802  RCA 1802 + 1861 + VDU, 64K RAM", COL_CYAN);
     ui_put_at(DISPLAY_LABEL_COL, DISPLAY_LABEL_ROW, "DATA", COL_WHITE);
     ui_put_at(Q_LABEL_COL, Q_LABEL_ROW, "Q", COL_WHITE);
     help_rows();
@@ -537,6 +559,25 @@ static void run_editor(char *note, size_t note_size)
         debugger_leave();
 }
 
+/* The speed of the serial line now, in baud (0 when it is off). */
+static uint32_t serial_baud(void)
+{
+    static const uint32_t bauds[SERIAL_BAUD_STEPS] = SERIAL_BAUDS;
+
+    return bauds[serial_step];
+}
+
+/* What the program has sent down the serial line goes to the terminal. */
+static void serial_update(void)
+{
+    int c;
+
+    if (!elf.serial.enabled)
+        return;
+    while ((c = serial_receive(&elf.serial)) >= 0)
+        terminal_put((uint8_t)c);
+}
+
 /* What the menu asked for besides its own screens.
  *
  * Author: Thomas Dzubin */
@@ -564,6 +605,22 @@ static void do_menu_action(int action, char *note, size_t note_size)
         break;
     case FILEMENU_ACT_VIEW:
         view_vdu = !view_vdu;           /* the screen is drawn afresh by the caller */
+        break;
+    case FILEMENU_ACT_SERIAL:
+        serial_step = (serial_step + 1) % SERIAL_BAUD_STEPS;
+        elf_set_serial(&elf, serial_baud());
+        if (serial_step > 0) {
+            terminal_clear();
+            ascii_mode = true;          /* the typed keys go down the line */
+            snprintf(note, note_size, "SERIAL %u BAUD: F4 FOR THE KEYPAD", (unsigned)serial_baud());
+        } else {
+            ascii_mode = false;
+            snprintf(note, note_size, "SERIAL LINE OFF");
+        }
+        break;
+    case FILEMENU_ACT_POLARITY:
+        elf.serial.inverted = !elf.serial.inverted;
+        snprintf(note, note_size, "SERIAL: Q %s", elf.serial.inverted ? "INVERTED" : "DIRECT");
         break;
     default:
         break;

@@ -187,6 +187,45 @@ int plat_file_load(const char *name, uint8_t *data, uint32_t max, uint32_t *len)
     return PLAT_FILE_OK;
 }
 
+static fat32_file_t read_file;                      /* the file being read in pieces */
+static bool         read_open;
+
+int plat_file_open(const char *name)
+{
+    char path[PLAT_PATH_MAX];
+    fat32_error_t e;
+
+    plat_file_close();
+    if (!fat32_is_ready())
+        return PLAT_FILE_NO_CARD;
+    program_path(path, sizeof path, name);
+    e = fat32_open(&read_file, path);
+    if (e != FAT32_OK)
+        return file_result(e);
+    read_open = true;
+    return PLAT_FILE_OK;
+}
+
+int plat_file_read(uint8_t *data, uint32_t max, uint32_t *got)
+{
+    size_t n = 0;
+
+    *got = 0;
+    if (!read_open)
+        return PLAT_FILE_FAILED;
+    if (fat32_read(&read_file, data, max, &n) != FAT32_OK)
+        return PLAT_FILE_FAILED;
+    *got = (uint32_t)n;
+    return PLAT_FILE_OK;
+}
+
+void plat_file_close(void)
+{
+    if (read_open)
+        fat32_close(&read_file);
+    read_open = false;
+}
+
 /* True for a name that ends in the given extension, whatever the case. */
 static bool has_ext(const char *name, const char *ext)
 {

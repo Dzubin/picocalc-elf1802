@@ -91,7 +91,7 @@ From the emma02 Elf II pages (panel, keyboard, I/O map):
   nibble). In load mode the IN button starts a DMA-IN that stores that byte at
   R0 and increments R0. EF4 reads 0 while IN is pressed.
 - Two hex displays show the byte written by OUT 4. A single Q LED shows the Q
-  flag. Elf II memory is 256 bytes as sold; this emulator has 16K (`ELF_RAM_SIZE`).
+  flag. Elf II memory is 256 bytes as sold; this emulator has 64K (`ELF_RAM_SIZE`).
 - **Port 4 (the hex keypad in, the two hex displays out).** `INP 4` returns the
   keypad's two-digit latch (the last two digits typed, the older one in the high
   nibble; 00 before any key), `OUT 4` writes the displays, which hold the byte until
@@ -172,8 +172,9 @@ checked by running them:
   6847 character codes, A = 01, space = 20), A0 for the cursor. Their screens come
   out right (WUMPUS, Lunar Lander and the others draw proper pictures). Which
   colour a block cell has (bits 4 and 5) is a guess (green, yellow, blue, red).
-- The memory-sizing loop at the start of Tiny BASIC stops at the end of the
-  16K of RAM, because writes above it are ignored and reads give 00.
+- The memory-sizing loop at the start of Tiny BASIC used to stop at the end of the
+  16K of RAM (writes above it were ignored and reads gave 00). With 64K of RAM it
+  finds more memory, and the VDU at E000 is in the way; not tried yet.
 
 Not confirmed: that the real board decoded exactly 1K (the programs only use
 E000 to E3FF) and the real keyboard's timing between keys.
@@ -191,6 +192,8 @@ from the OCR of the article (the main program's bytes were put back in order fro
 the text and its branch targets, the data checked against the picture it draws).
 
 ## Sources
+
+- Lee Hart's 1802 Membership Card: [Lee Hart's 1802 Membership Card project](https://www.sunrise-ev.com/1802.htm) (the Rev L manual, `memberl.pdf`, gives the 4 MHz clock, the memory map, the front panel, the serial line on Q and EF3 and the revision history) and the [Membership Card pages at Retrotechnology](https://www.retrotechnology.com/memship/memship.html) (Herb Johnson).
 
 - RCA/Intersil CDP1802A, CDP1802AC, CDP1802BC data sheet (March 1997).
 - emma02: [CDP1861](https://emma02.hobby-site.com/cdp1861.html),

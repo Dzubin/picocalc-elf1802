@@ -14,8 +14,8 @@
 #include "elf_const.h"
 
 /* Shown on the splash screen; the firmware build reads it from this line, so
- * keep it in the form  #define VERSION "V0.10A"  on one line. */
-#define VERSION "V0.10A"
+ * keep it in the form  #define VERSION "V0.20A"  on one line. */
+#define VERSION "V0.20A"
 
 /* ------------------------------------------------------------------ */
 /*  Colours (full-strength only: dim greys are hard to read on the LCD) */
@@ -248,6 +248,8 @@ typedef struct {
 #define KEY_VIEW            'v'     /* show the VDU or the picture (hex mode) */
 #define KEY_SCREEN_TOGGLE   KEY_TAB /* the panel screen <-> the details screen */
 #define KEY_BOOT_PROGRAM    'b'     /* on the title screen: reload the boot program */
+#define KEY_MEMBERSHIP_CARD 'c'     /* on the title screen: run the Membership Card */
+#define KEY_NETRONICS_ELF   'n'     /* on the title screen: the Elf II (so does any other key) */
 #define KEY_HELP            'h'     /* the help screen (H, h or ?)            */
 #define KEY_HELP_QUESTION   '?'
 

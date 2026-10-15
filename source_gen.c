@@ -350,6 +350,7 @@ size_t srcgen_from_image(const isa_t *isa, const uint8_t *image, uint32_t size,
     size_t room;
     char line[96];
 
+    size = SRCGEN_WINDOW(size);
     out[0] = '\0';
     s.isa = isa;
     s.image = image;
@@ -409,6 +410,7 @@ void srcgen_listing_start(const isa_t *isa, const uint8_t *image, uint32_t size)
 {
     uint32_t addr = 0;
 
+    size = SRCGEN_WINDOW(size);
     l_source.isa = isa;
     l_source.image = image;
     l_source.size = size;
@@ -464,9 +466,11 @@ size_t srcgen_listing_next(char *out, size_t out_size, bool *finished)
 void srcgen_mark_targets(const isa_t *isa, const uint8_t *image, uint32_t size,
                          uint8_t *marks)
 {
-    uint32_t limit = code_limit(image, size);
+    uint32_t limit;
     uint32_t addr = 0;
 
+    size = SRCGEN_WINDOW(size);
+    limit = code_limit(image, size);
     memset(marks, 0, size / 8);
     while (addr < limit) {
         uint8_t b[ISA_MAX_BYTES];

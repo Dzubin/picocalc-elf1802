@@ -1139,7 +1139,7 @@ static fat32_error_t link_entry(fat32_entry_t *entry, const char *path)
         for (uint32_t i = 0; i < FAT32_SECTOR_SIZE; i += 32)
         {
             fat32_dir_entry_t *entry_ptr = (fat32_dir_entry_t *)(sector_buffer + i);
-            if (entry_ptr->shortname[0] == FAT32_DIR_ENTRY_FREE || entry_ptr->shortname[0] == FAT32_DIR_ENTRY_END_MARKER)
+            if ((uint8_t)entry_ptr->shortname[0] == FAT32_DIR_ENTRY_FREE || entry_ptr->shortname[0] == FAT32_DIR_ENTRY_END_MARKER)
             {
                 if (free_count == 0)
                 {
@@ -1502,25 +1502,19 @@ fat32_error_t fat32_write(fat32_file_t *file, const void *buffer, size_t size, s
         *bytes_written = 0;
     }
 
+    if (size == 0)
+    {
+        return FAT32_OK; // Nothing to write
+    }
+
     uint32_t old_file_size = file->file_size;
 
-    // Ensure current_cluster is correct for current file position
-    uint32_t cluster = file->start_cluster;
-    uint32_t cluster_offset = file->position / bytes_per_cluster;
-    for (uint32_t i = 0; i < cluster_offset; i++)
-    {
-        uint32_t next_cluster;
-        RETURN_ON_ERROR(read_cluster_fat_entry(cluster, &next_cluster));
-        if (next_cluster >= FAT32_FAT_ENTRY_EOC)
-        {
-            // Allocate a new cluster and link it
-            uint32_t new_cluster = 0;
-            RETURN_ON_ERROR(allocate_and_link_cluster(cluster, &new_cluster));
-            next_cluster = new_cluster;
-        }
-        cluster = next_cluster;
-    }
-    file->current_cluster = cluster;
+    // The clusters the write needs are allocated below, and seek_to_cluster() finds the
+    // one for the position afterwards. (A walk along the chain here used to allocate a
+    // cluster at a cluster-aligned end of file, and the allocation below then linked a
+    // second one after the last cluster, leaving the first unreachable.)
+    uint32_t cluster;
+    uint32_t cluster_offset;
 
     size_t total_written = 0;
     const uint8_t *src = (const uint8_t *)buffer;
@@ -1935,6 +1929,12 @@ fat32_error_t fat32_dir_read(fat32_file_t *dir, fat32_entry_t *dir_entry)
             // End of directory
             dir->last_entry_read = true; // Mark that we reached the end
         }
+        else if ((uint8_t)entry->shortname[0] == FAT32_DIR_ENTRY_FREE)
+        {
+            // Deleted entry (an 8.3 entry or a long file name part): skip it, and forget
+            // any long name collected so far, which belonged to something else
+            filename[0] = '\0';
+        }
         else if (entry->attr == FAT32_ATTR_LONG_NAME)
         {
             // Populate long filename buffer with this entry's name contents
@@ -1951,10 +1951,24 @@ fat32_error_t fat32_dir_read(fat32_file_t *dir, fat32_entry_t *dir_entry)
             {
                 // Copy this entry's part of the long filename into the filename buffer
                 int offset = ((lfn_entry->seq & 0x3F) - 1) * FAT32_DIR_LFN_PART_SIZE;
-                lfn_to_str(lfn_entry, filename + offset);
+                if (offset >= 0 && offset <= FAT32_MAX_FILENAME_LEN)
+                {
+                    // The last part of a name of 247 to 255 characters has fewer than 13
+                    // characters left in the buffer; copy only what fits
+                    char part[FAT32_DIR_LFN_PART_SIZE];
+                    size_t room = FAT32_MAX_FILENAME_LEN + 1 - offset;
+
+                    lfn_to_str(lfn_entry, part);
+                    if (room > FAT32_DIR_LFN_PART_SIZE)
+                    {
+                        room = FAT32_DIR_LFN_PART_SIZE;
+                    }
+                    memcpy(filename + offset, part, room);
+                    filename[FAT32_MAX_FILENAME_LEN] = '\0';
+                }
             }
         }
-        else if (entry->shortname[0] != FAT32_DIR_ENTRY_FREE)
+        else
         {
             uint8_t checksum = shortname_checksum(entry->shortname);
             // Now check to see if this is the entry we are looking for

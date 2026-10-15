@@ -56,6 +56,11 @@ picocalc_desktop_app(
         ${TOP}/cdp1861.c
         ${TOP}/elf.c
         ${TOP}/rom.c
+        ${TOP}/memview.c
+        ${TOP}/serial.c
+        ${TOP}/mcard.c
+        ${TOP}/mcardui.c
+        ${TOP}/terminal.c
         ${TOP}/target.c
         ${TOP}/membus.c
         ${TOP}/hexfile.c
@@ -64,6 +69,8 @@ picocalc_desktop_app(
         ${CMAKE_CURRENT_LIST_DIR}/platform_desktop.c
         ${STARTER}/drivers/font-8x10.c
         ${STARTER}/drivers/font-5x10.c
+    DEFINES
+        ASM_IMAGE_SIZE=0x10000       # the whole 64K RAM can be assembled and listed
     INCLUDES
         ${TOP}
         ${STARTER}/drivers

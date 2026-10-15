@@ -21,7 +21,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "asm_const.h"
 #include "isa.h"
+
+/* The most that the code/data trace and the listing look at: the assembler's
+ * window (ASM_IMAGE_SIZE), because their tables are that big. A RAM larger
+ * than that is listed up to the window only. */
+#define SRCGEN_WINDOW(size)     ((size) < ASM_IMAGE_SIZE ? (size) : ASM_IMAGE_SIZE)
 
 /* Write source text for the image (size bytes) into out: an ORG line, then the
  * lines for address 0 to the last byte that is not zero. If out is too small

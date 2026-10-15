@@ -1,5 +1,5 @@
 /*
- * elf.h - the whole computer: a CDP1802 and a CDP1861 on a board with 16K of
+ * elf.h - the whole computer: a CDP1802 and a CDP1861 on a board with 64K of
  * RAM, a hexadecimal keypad with an IN button, two hex displays, a Q LED and
  * the RUN, LOAD and memory-protect switches, in the style of the Netronics
  * Elf II.
@@ -41,6 +41,7 @@
 #include "machine.h"
 #include "membus.h"
 #include "qaudio.h"
+#include "serial.h"
 #include "target.h"
 
 typedef struct {
@@ -52,7 +53,9 @@ typedef struct {
                                        free and ports 1 doing nothing          */
     membus_t  bus;                  /* the memory map: the RAM below, the VDU's
                                        video RAM, and nothing else            */
-    uint8_t   ram[ELF_RAM_SIZE];
+    uint8_t   ram[ELF_RAM_SIZE];    /* the RAM array: the first ram_size bytes are mapped */
+    uint32_t  ram_size;             /* how much RAM is fitted (see elf_set_ram_size) */
+    program_target_t *target;       /* the program memory the menus use, kept in step */
 
     bool      sw_run;               /* RUN switch up                         */
     bool      sw_load;              /* LOAD switch up                        */
@@ -82,14 +85,26 @@ typedef struct {
     uint8_t   kbd_latch;            /* the code INP 7 gives                  */
     bool      kbd_ready;            /* a new key is in the latch (EF3 low)  */
     uint32_t  kbd_gap;              /* cycles before the next key may show   */
+
+    serial_t  serial;               /* a serial line on Q and EF3 (off at power-on):
+                                       with it on EF3 is the line, not the
+                                       ASCII keyboard strobe                 */
 } elf_t;
 
 void elf_init(elf_t *m);            /* power on: RAM cleared, in RESET       */
+
+/* Fit this much RAM (16384, 32768 or 65536; anything else is the nearest size
+ * up): it is mapped from 0000, and what was above a smaller size is cleared. */
+void elf_set_ram_size(elf_t *m, uint32_t size);
 
 /* Fit the 1861 video chip to the board, or take it off (a basic Elf). Without
  * it EF1 stays high, there is no interrupt or DMA from it, and INP 1 and OUT 1
  * do nothing. It is fitted when the Elf is powered on. */
 void elf_set_video(elf_t *m, bool installed);
+
+/* Turn the serial line (Q out, EF3 in) on at this speed, or off with 0. The
+ * ASCII keyboard keys are sent along it while it is on. */
+void elf_set_serial(elf_t *m, uint32_t baud);
 
 /* The front panel. */
 void elf_set_switches(elf_t *m, bool run, bool load, bool mp);

@@ -17,10 +17,11 @@ void title_screen(void)
     ui_put_row(SPLASH_ROW_TITLE, "ELF1802", COL_CYAN);
     ui_put_row(SPLASH_ROW_VERSION, VERSION, COL_CYAN);
     ui_put_row(SPLASH_ROW_ABOUT_1, "A COSMAC ELF: RCA 1802 CPU,", COL_WHITE);
-    ui_put_row(SPLASH_ROW_ABOUT_2, "16K RAM and the 1861 video chip", COL_WHITE);
+    ui_put_row(SPLASH_ROW_ABOUT_2, "64K RAM and the 1861 video chip", COL_WHITE);
     ui_put_row(SPLASH_ROW_AUTHOR, "BY THOMAS DZUBIN", COL_WHITE);
-    ui_put_row(UI_ROW_PROMPT, "PRESS ANY KEY TO START", COL_WHITE);
+    ui_put_row(UI_ROW_PROMPT, "N, or any key: the Netronics Elf II", COL_WHITE);
     ui_put_row(UI_ROW_EXIT, "or ESC / Q to exit", COL_WHITE);
     ui_put_row(SPLASH_ROW_BOOT, "B: start with the boot program again", COL_WHITE);
+    ui_put_row(SPLASH_ROW_CARD, "C: the 1802 Membership Card instead", COL_WHITE);
     ui_put_row(SPLASH_ROW_KEYS, SPLASH_KEYS_TEXT, COL_YELLOW);
 }

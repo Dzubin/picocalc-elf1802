@@ -102,7 +102,7 @@ static void bus_dma_out(void *ctx, uint8_t data)
 static void map_memory(elf_t *m)
 {
     membus_init(&m->bus, ELF_UNMAPPED_READ);
-    membus_map_ram(&m->bus, 0, ELF_RAM_SIZE, m->ram);
+    membus_map_ram(&m->bus, 0, m->ram_size, m->ram);
     membus_map_hooked(&m->bus, ELF_VDU_BASE, ELF_VDU_SIZE, m->vdu, vdu_write, m);
     rom_apply(&m->bus);
     membus_write_protect(&m->bus, 0, ELF_RAM_SIZE, m->sw_mp);
@@ -111,9 +111,23 @@ static void map_memory(elf_t *m)
 /* ------------------------------------------------------------------ */
 /*  Set-up and front panel                                              */
 /* ------------------------------------------------------------------ */
+/* The smallest size on offer that is at least size, or the largest. */
+static uint32_t ram_step(uint32_t size)
+{
+    static const uint32_t sizes[ELF_RAM_STEPS] = ELF_RAM_SIZES;
+    int i;
+
+    for (i = 0; i < ELF_RAM_STEPS - 1; i++)
+        if (size <= sizes[i])
+            return sizes[i] < ELF_RAM_SIZE ? sizes[i] : ELF_RAM_SIZE;
+    return sizes[ELF_RAM_STEPS - 1] < ELF_RAM_SIZE ? sizes[ELF_RAM_STEPS - 1] : ELF_RAM_SIZE;
+}
+
 void elf_init(elf_t *m)
 {
     memset(m, 0, sizeof *m);
+    m->ram_size = ELF_RAM_DEFAULT;
+    serial_init(&m->serial);
     m->video_installed = true;
     map_memory(m);
     pixie_init(&m->video);
@@ -126,6 +140,22 @@ void elf_init(elf_t *m)
     m->cpu.io_out = bus_io_out;
     m->cpu.dma_in = bus_dma_in;
     m->cpu.dma_out = bus_dma_out;
+}
+
+void elf_set_ram_size(elf_t *m, uint32_t size)
+{
+    size = ram_step(size);
+    if (size < m->ram_size)
+        memset(m->ram + size, 0, m->ram_size - size);   /* what was above is gone */
+    m->ram_size = size;
+    if (m->target)
+        m->target->size = size;
+    map_memory(m);
+}
+
+void elf_set_serial(elf_t *m, uint32_t baud)
+{
+    serial_set_speed(&m->serial, baud, ELF_CYCLES_PER_SEC);
 }
 
 void elf_set_video(elf_t *m, bool installed)
@@ -171,6 +201,8 @@ static void kbd_present(elf_t *m)
 
 bool elf_ascii_key(elf_t *m, uint8_t code)
 {
+    if (m->serial.enabled)                  /* the keys go down the serial line */
+        return serial_send(&m->serial, code);
     if (m->kbd_count >= ELF_KBD_FIFO)
         return false;
     m->kbd[(m->kbd_head + m->kbd_count) % ELF_KBD_FIFO] = code;
@@ -181,8 +213,8 @@ bool elf_ascii_key(elf_t *m, uint8_t code)
 
 void elf_load_image(elf_t *m, const uint8_t *data, uint32_t len)
 {
-    if (len > ELF_RAM_SIZE)
-        len = ELF_RAM_SIZE;
+    if (len > m->ram_size)
+        len = m->ram_size;
     if (len > 0)
         memcpy(m->ram, data, len);
     memset(m->ram + len, 0, ELF_RAM_SIZE - len);
@@ -215,8 +247,12 @@ int elf_cycle(elf_t *m)
     if (m->kbd_gap > 0)
         m->kbd_gap--;
     kbd_present(m);
-    if (!m->kbd_ready)                      /* the strobe pulls EF3 low */
+    if (m->serial.enabled) {                /* EF3 is the serial line, not the keyboard */
+        if (serial_flag_high(&m->serial))
+            c->ef |= ELF_EF_KEYBOARD;
+    } else if (!m->kbd_ready) {             /* the strobe pulls EF3 low */
         c->ef |= ELF_EF_KEYBOARD;
+    }
     if (!m->in_button)                      /* IN grounds EF4 while it is down */
         c->ef |= ELF_EF_IN_BUTTON;
 
@@ -234,6 +270,8 @@ int elf_cycle(elf_t *m)
         if (m->video_installed)
             pixie_cycle_done(&m->video);
         qaudio_cycle(&m->audio, c->q);
+        if (m->serial.enabled)
+            serial_tick(&m->serial, c->q);
     }
     if (c->q != q_before) {
         m->q_changes++;
@@ -330,11 +368,33 @@ static void target_remap(void *ctx)
     map_memory(ctx);
 }
 
+static const char *target_ram_text(void *ctx)
+{
+    static char text[32];
+    const elf_t *m = ctx;
+
+    snprintf(text, sizeof text, "RAM size: %uK", (unsigned)(m->ram_size / 1024u));
+    return text;
+}
+
+/* The next size on offer: 16K, 32K, 64K and round again. */
+static void target_ram_press(void *ctx, char *note, size_t note_size)
+{
+    elf_t *m = ctx;
+
+    elf_set_ram_size(m, m->ram_size >= ELF_RAM_SIZE ? 1u : m->ram_size + 1u);
+    snprintf(note, note_size, "RAM IS NOW %uK", (unsigned)(m->ram_size / 1024u));
+}
+
 void elf_program_target(elf_t *m, program_target_t *t)
 {
     t->ram = m->ram;
     t->base = 0;
-    t->size = ELF_RAM_SIZE;
+    t->size = m->ram_size;
+    m->target = t;                          /* kept in step when the size changes */
+    t->ram_key = 'z';
+    t->ram_text = target_ram_text;
+    t->ram_press = target_ram_press;
     t->isa = &isa_1802;
     t->loaded = target_loaded;
     t->extra_key = 'y';

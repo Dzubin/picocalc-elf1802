@@ -60,6 +60,14 @@ void membus_unmap(membus_t *bus, uint32_t addr, uint32_t size);
  * left as they are. */
 void membus_write_protect(membus_t *bus, uint32_t addr, uint32_t size, bool protect);
 
+/* What a page of the map is, for a display of the map. */
+#define MEMBUS_KIND_NONE    0       /* nothing: reads give the open bus value  */
+#define MEMBUS_KIND_RAM     1       /* RAM, write protected or not             */
+#define MEMBUS_KIND_ROM     2       /* read-only memory                        */
+#define MEMBUS_KIND_DEVICE  3       /* a device, or memory whose writes go to a function */
+
+int membus_page_kind(const membus_t *bus, unsigned page);
+
 static inline uint8_t membus_read(const membus_t *bus, uint16_t addr)
 {
     const membus_page_t *p = &bus->page[addr >> MEMBUS_PAGE_SHIFT];

@@ -63,8 +63,15 @@
 /*  The Elf board                                                       */
 /* ------------------------------------------------------------------ */
 
-#define ELF_RAM_SIZE            16384    /* bytes at 0000, a power of two    */
-#define ELF_RAM_MASK            (ELF_RAM_SIZE - 1)
+/* The most RAM there can be (bytes at 0000). The whole address space, with ROM
+ * images and the VDU mapped over it; the RP2040 build is given a smaller figure
+ * in CMakeLists.txt because its own RAM is short. */
+#ifndef ELF_RAM_SIZE
+#define ELF_RAM_SIZE            65536
+#endif
+#define ELF_RAM_STEPS           3        /* the RAM sizes the menu offers: */
+#define ELF_RAM_SIZES           { 16384, 32768, 65536 }
+#define ELF_RAM_DEFAULT         ELF_RAM_SIZE   /* what the Elf starts with   */
 
 /* What the data bus carries when nothing drives it: a read from an address
  * with no memory, or an INP from a port with no device. */
@@ -145,6 +152,7 @@
 #define HEX_OK                  0
 #define HEX_ERR_FORMAT          1        /* not a well-formed HEX file       */
 #define HEX_ERR_CHECKSUM        2        /* a record's checksum is wrong     */
+#define HEX_LINE_MAX            528      /* characters after the colon: the longest record is 520 */
 
 /* ------------------------------------------------------------------ */
 /*  The 1861 (Pixie) video chip                                         */

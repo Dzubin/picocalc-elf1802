@@ -666,7 +666,7 @@ static void cmd_new(void)
 /* Author: Thomas Dzubin */
 static void cmd_disassemble(void)
 {
-    uint32_t done = 0, limit = target->size;
+    uint32_t done = 0, limit = SRCGEN_WINDOW(target->size);
     char note[EDITOR_NOTE_MAX + 1];
     size_t n;
 
@@ -785,7 +785,7 @@ int editor_open_source(const program_target_t *t, const char *name, editor_resul
 /* Author: Thomas Dzubin */
 void editor_load_ram(const program_target_t *t, const char *name)
 {
-    uint32_t done = 0, limit = t->size;
+    uint32_t done = 0, limit = SRCGEN_WINDOW(t->size);
     size_t i, k = 0;
 
     clear_text();

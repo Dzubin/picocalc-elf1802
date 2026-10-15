@@ -28,7 +28,7 @@ static uint16_t top;                            /* the address on the list's fir
 static int32_t  break_at = -1;                  /* the breakpoint, -1 for none */
 static bool     broke;                          /* stopped by the breakpoint  */
 static uint32_t step_cycles;                    /* cycles the last step took  */
-static uint8_t  targets[ELF_RAM_SIZE / 8];      /* branch targets, a bit each */
+static uint8_t  targets[SRCGEN_WINDOW(ELF_RAM_SIZE) / 8];   /* branch targets, a bit each */
 
 void debugger_attach(elf_t *m)
 {
@@ -193,7 +193,7 @@ void debugger_draw(void)
 
     addr = follow ? pc : top;
     top = addr;
-    srcgen_mark_targets(&isa_1802, machine->ram, ELF_RAM_SIZE, targets);
+    srcgen_mark_targets(&isa_1802, machine->ram, SRCGEN_WINDOW(ELF_RAM_SIZE), targets);
     for (i = 0; i < DBG_LIST_LINES; i++) {
         int len;
         uint16_t colour;
@@ -209,7 +209,7 @@ void debugger_draw(void)
         /* a colon after the address marks the target of a branch or jump */
         snprintf(line, sizeof line, "%c%c%04X%c %-8s %s", addr == pc ? '>' : ' ',
                  (int32_t)addr == break_at ? '*' : ' ', (unsigned)addr,
-                 (addr < ELF_RAM_SIZE && ((targets[addr >> 3] >> (addr & 7)) & 1)) ? ':' : ' ',
+                 ((uint32_t)addr < SRCGEN_WINDOW(ELF_RAM_SIZE) && ((targets[addr >> 3] >> (addr & 7)) & 1)) ? ':' : ' ',
                  bytes, text);
         colour = (int32_t)addr == break_at ? COL_RED :
                  (addr == pc ? COL_YELLOW : COL_WHITE);

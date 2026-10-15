@@ -16,6 +16,7 @@
 #include "filemenu.h"
 #include "filemenu_const.h"
 #include "rom.h"          /* the ROM images                                   */
+#include "memview.h"      /* the memory map screen                            */
 #include "source_gen.h"   /* the listing written by D                         */
 #include "hexfile.h"      /* Intel HEX program files                          */
 #include "platform.h"     /* the saved programs on the SD card                */
@@ -23,7 +24,7 @@
 
 #define KIND_COUNT          2               /* PLAT_KIND_PROGRAM, PLAT_KIND_SOURCE */
 
-static uint8_t file_buf[HEX_FILE_MAX];          /* a .HEX file, while it is read */
+static uint8_t io_buf[LISTING_CHUNK];           /* a piece of a .HEX file read, or of a listing written */
 static char    last_pick[KIND_COUNT][PLAT_NAME_MAX];   /* where each list was left */
 
 /* True when the name ends in the extension, whatever the case. */
@@ -294,7 +295,7 @@ static void remember(const char *file)
 static bool listing_screen(const program_target_t *t, filemenu_result_t *result)
 {
     char name[SAVE_NAME_MAX + 1];
-    char *chunk = (char *)file_buf;
+    char *chunk = (char *)io_buf;
 
     snprintf(name, sizeof name, "%s", last_name);
     for (;;) {
@@ -330,6 +331,22 @@ static bool listing_screen(const program_target_t *t, filemenu_result_t *result)
     }
 }
 
+/* How much of the RAM a saved image holds: up to the last byte that is not
+ * zero, rounded up to a whole page, and at least one page. (A file read back
+ * fills the rest of the RAM with zeros, so nothing is lost, and a program of a
+ * few hundred bytes is not written as 64 KB.) */
+static uint32_t save_length(const program_target_t *t)
+{
+    uint32_t n = t->size;
+
+    while (n > 0 && t->ram[n - 1] == 0)
+        n--;
+    n = (n + SAVE_PAGE - 1) / SAVE_PAGE * SAVE_PAGE;
+    if (n < SAVE_PAGE)
+        n = SAVE_PAGE;
+    return n < t->size ? n : t->size;
+}
+
 /* Ask for a name and write the RAM image to NAME.BIN. Returns true if it
  * was saved (the note says so).
  *
@@ -347,7 +364,7 @@ static bool save_screen(const program_target_t *t, filemenu_result_t *result)
                                name, sizeof name))
             return false;
         snprintf(file, sizeof file, "%s%s", name, PLAT_PROGRAM_EXT);
-        rc = plat_file_save(file, t->ram, t->size);
+        rc = plat_file_save(file, t->ram, save_length(t));
         if (rc == PLAT_FILE_OK) {
             remember(file);
             snprintf(result->note, sizeof result->note, "SAVED %s", file);
@@ -379,18 +396,34 @@ static bool open_screen(const program_target_t *t, filemenu_result_t *result)
             return true;
         }
         if (ends_with(name, PLAT_HEX_EXT)) {
-            uint32_t stored = 0, skipped = 0;
-            int hrc;
+            hex_stream_t hex;
+            uint32_t skipped = 0;
+            int hrc = HEX_OK;
 
-            rc = plat_file_load(name, file_buf, HEX_FILE_MAX, &len);
+            rc = plat_file_open(name);
             if (rc == PLAT_FILE_OK) {
                 program_target_load(t, NULL, 0);        /* clear it first */
-                hrc = hex_load((const char *)file_buf, len, t->ram,
-                               t->size, &stored, &skipped);
+                hex_stream_init(&hex, t->ram, t->size);
+                while (rc == PLAT_FILE_OK && hrc == HEX_OK && !hex.done) {
+                    uint32_t got;
+
+                    rc = plat_file_read(io_buf, sizeof io_buf, &got);
+                    if (rc != PLAT_FILE_OK || got == 0)
+                        break;
+                    hrc = hex_stream_feed(&hex, (const char *)io_buf, got);
+                }
+                plat_file_close();
+                if (rc != PLAT_FILE_OK) {
+                    ui_put_row(LIST_ROW_HINT - 2, filemenu_error_text(rc), COL_RED);
+                    ui_wait_any_key();
+                    continue;
+                }
+                hrc = hex_stream_end(&hex);
+                skipped = hex.skipped;
                 if (hrc != HEX_OK) {
                     ui_put_row(LIST_ROW_HINT - 2, hrc == HEX_ERR_CHECKSUM ?
                                "BAD CHECKSUM IN THE HEX FILE" :
-                               "NOT A GOOD HEX FILE (OR TOO LONG)", COL_RED);
+                               "NOT A GOOD HEX FILE", COL_RED);
                     ui_wait_any_key();
                     continue;
                 }
@@ -432,7 +465,7 @@ static bool confirm(const char *question)
 enum {
     ID_SAVE, ID_OPEN, ID_NEW, ID_LISTING, ID_ROM,
     ID_EDIT, ID_DEBUGGER, ID_HELP,
-    ID_PROTECT, ID_KEYBOARD, ID_SOUND, ID_VIEW, ID_EXTRA,
+    ID_PROTECT, ID_KEYBOARD, ID_SOUND, ID_VIEW, ID_SERIAL, ID_POLARITY, ID_RAM, ID_MAP, ID_EXTRA,
     ID_TITLE,
     ID_COUNT
 };
@@ -462,6 +495,15 @@ static int build_menu(const program_target_t *t, const filemenu_machine_t *m,
              m->ascii_mode ? "ASCII" : "HEX KEYPAD");
     snprintf(labels[ID_SOUND], MENU_LABEL_MAX, "Q  Sound: %s", m->sound_on ? "ON" : "OFF");
     snprintf(labels[ID_VIEW], MENU_LABEL_MAX, "V  Top of screen: %s", m->vdu_shown ? "VDU" : "PICTURE");
+    if (m->serial_baud)
+        snprintf(labels[ID_SERIAL], MENU_LABEL_MAX, "J  Serial (Q, EF3): %u BAUD", (unsigned)m->serial_baud);
+    else
+        snprintf(labels[ID_SERIAL], MENU_LABEL_MAX, "J  Serial (Q, EF3): OFF");
+    snprintf(labels[ID_POLARITY], MENU_LABEL_MAX, "   Serial polarity: Q %s",
+             m->serial_inverted ? "INVERTED" : "DIRECT");
+    if (t->ram_key)
+        snprintf(labels[ID_RAM], MENU_LABEL_MAX, "%c  %s", t->ram_key - 'a' + 'A',
+                 t->ram_text(t->ctx));
     if (t->extra_key)               /* something of the machine's own (the 1861) */
         snprintf(labels[ID_EXTRA], MENU_LABEL_MAX, "%c  %s", t->extra_key - 'a' + 'A',
                  t->extra_text(t->ctx));
@@ -484,6 +526,12 @@ static int build_menu(const program_target_t *t, const filemenu_machine_t *m,
     add_row(items, ids, &n, labels[ID_KEYBOARD], 'k', ID_KEYBOARD);
     add_row(items, ids, &n, labels[ID_SOUND], 'q', ID_SOUND);
     add_row(items, ids, &n, labels[ID_VIEW], 'v', ID_VIEW);
+    add_row(items, ids, &n, labels[ID_SERIAL], 'j', ID_SERIAL);
+    add_row(items, ids, &n, labels[ID_POLARITY], 0, ID_POLARITY);
+    if (t->ram_key)
+        add_row(items, ids, &n, labels[ID_RAM], t->ram_key, ID_RAM);
+    if (t->bus)
+        add_row(items, ids, &n, "U  Memory map", 'u', ID_MAP);
     if (t->extra_key)
         add_row(items, ids, &n, labels[ID_EXTRA], t->extra_key, ID_EXTRA);
     add_row(items, ids, &n, "#", 0, -1);
@@ -557,6 +605,18 @@ void filemenu_run(const program_target_t *t, const filemenu_machine_t *m,
         case ID_VIEW:
             result->action = FILEMENU_ACT_VIEW;
             return;
+        case ID_SERIAL:
+            result->action = FILEMENU_ACT_SERIAL;
+            return;
+        case ID_POLARITY:
+            result->action = FILEMENU_ACT_POLARITY;
+            return;
+        case ID_RAM:
+            t->ram_press(t->ctx, result->note, sizeof result->note);
+            break;
+        case ID_MAP:
+            memview_run(t->bus);
+            break;
         case ID_EXTRA:
             if (t->extra_press(t->ctx, result->note, sizeof result->note))
                 result->video_changed = true;       /* the screen has to be drawn again */
@@ -569,4 +629,12 @@ void filemenu_run(const program_target_t *t, const filemenu_machine_t *m,
             return;
         }
     }
+}
+
+void filemenu_rom_images(const program_target_t *t)
+{
+    filemenu_result_t result;
+
+    memset(&result, 0, sizeof result);
+    rom_screen(t, &result);
 }

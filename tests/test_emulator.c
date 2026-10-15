@@ -60,6 +60,8 @@ static void test_sequencing(void);
 static void test_front_panel(void);
 static void test_video(void);
 static void test_ram_edge(void);
+static void test_ram_sizes(void);
+static void test_serial(void);
 static void test_ascii_keyboard(void);
 static void test_vdu(void);
 static void test_hex(void);
@@ -77,7 +79,7 @@ static asm_t assembler;
 
 static int assemble_text(const char *text)
 {
-    return asm_assemble(&isa_1802, &assembler, 0, ELF_RAM_SIZE, text, strlen(text));
+    return asm_assemble(&isa_1802, &assembler, 0, 0x4000, text, strlen(text));   /* a 16K machine */
 }
 
 /* True when the assembler's image starts with these bytes. */
@@ -212,7 +214,7 @@ static void test_assembler_errors(void)
  * Author: Thomas Dzubin */
 static void test_source_round_trip(void)
 {
-    static uint8_t image[ELF_RAM_SIZE];
+    static uint8_t image[ASM_IMAGE_SIZE];
     static char text[40000];
     uint32_t done = 0;
     unsigned op, seed = 12345, i;
@@ -391,6 +393,8 @@ static void test_source_round_trip(void);
 int main(void)
 {
     test_ram_edge();
+    test_ram_sizes();
+    test_serial();
     test_membus();
     test_rom();
     test_q_period();
@@ -1156,9 +1160,10 @@ static void test_ram_edge(void)
     m.cpu.mem_write(&m, ELF_RAM_SIZE - 1, 0xA5);
     CHECK(m.ram[ELF_RAM_SIZE - 1] == 0xA5);
     CHECK(m.cpu.mem_read(&m, ELF_RAM_SIZE - 1) == 0xA5);
-    m.cpu.mem_write(&m, ELF_RAM_SIZE, 0x5A);
-    CHECK(m.cpu.mem_read(&m, ELF_RAM_SIZE) == ELF_UNMAPPED_READ);
-    CHECK(m.cpu.mem_read(&m, 0xFFFF) == ELF_UNMAPPED_READ);
+    CHECK(ELF_RAM_SIZE == 0x10000);                     /* the whole address space */
+    m.cpu.mem_write(&m, 0x4000, 0x5A);                  /* the old 16K edge is RAM now */
+    CHECK(m.ram[0x4000] == 0x5A && m.cpu.mem_read(&m, 0x4000) == 0x5A);
+    m.cpu.mem_write(&m, 0x4000, 0);
     elf_load_image(&m, m.ram, ELF_RAM_SIZE + 100);      /* too long: cut */
     CHECK(m.ram[ELF_RAM_SIZE - 1] == 0xA5);
 }
@@ -1218,8 +1223,8 @@ static void test_vdu(void)
     CHECK(m.vdu[0] == 0x4F && m.vdu[ELF_VDU_SIZE - 1] == 0x21);
     CHECK(m.cpu.mem_read(&m, ELF_VDU_BASE) == 0x4F);
     CHECK(m.vdu_writes == 2);
-    m.cpu.mem_write(&m, ELF_VDU_BASE + ELF_VDU_SIZE, 0x55);      /* not mapped */
-    CHECK(m.cpu.mem_read(&m, ELF_VDU_BASE + ELF_VDU_SIZE) == ELF_UNMAPPED_READ);
+    m.cpu.mem_write(&m, ELF_VDU_BASE + ELF_VDU_SIZE, 0x55);      /* plain RAM above the VDU */
+    CHECK(m.cpu.mem_read(&m, ELF_VDU_BASE + ELF_VDU_SIZE) == 0x55);
     CHECK(m.vdu_writes == 2);
 
     elf_set_switches(&m, m.sw_run, m.sw_load, true);    /* memory protect leaves the VDU alone */
@@ -1264,7 +1269,7 @@ static void test_hex(void)
     n += make_record(text + n, 0x0000, 2, seg, 2, 0);
     n += make_record(text + n, 0x0020, 0, d2, 2, 0);     /* 1020 */
     n += make_record(text + n, 0, 1, NULL, 0, 0);
-    CHECK(hex_load(text, (uint32_t)n, image, sizeof image, &stored, &skipped) == HEX_OK);
+    CHECK(hex_load(text, (uint32_t)n, image, 0x4000, &stored, &skipped) == HEX_OK);   /* a 16K window */
     CHECK(image[0x10] == 0x11 && image[0x11] == 0x22 && image[0x12] == 0x33);
     CHECK(image[0x1020] == 0x44 && image[0x1021] == 0x55);
     CHECK(stored == 5 && skipped == 2);
@@ -1283,6 +1288,120 @@ static void test_hex(void)
     CHECK(hex_load(":0300", 5, image, sizeof image, &stored, &skipped) == HEX_ERR_FORMAT);
     CHECK(hex_load(":03000000ZZ2233", 15, image, sizeof image, &stored, &skipped) == HEX_ERR_FORMAT);
     CHECK(hex_load("", 0, image, sizeof image, &stored, &skipped) == HEX_OK && stored == 0);
+
+    /* the same file fed one character at a time, and a record split in two */
+    {
+        hex_stream_t h;
+        uint32_t i;
+
+        memset(image, 0, sizeof image);
+        n = 0;
+        n += make_record(text + n, 0x0010, 0, d1, 3, 0);
+        n += make_record(text + n, 0x0020, 0, d2, 2, 0);
+        n += make_record(text + n, 0, 1, NULL, 0, 0);
+        hex_stream_init(&h, image, sizeof image);
+        for (i = 0; i < (uint32_t)n; i++)
+            CHECK(hex_stream_feed(&h, text + i, 1) == HEX_OK);
+        CHECK(hex_stream_end(&h) == HEX_OK && h.done && h.stored == 5);
+        CHECK(image[0x10] == 0x11 && image[0x12] == 0x33 && image[0x21] == 0x55);
+        CHECK(hex_stream_feed(&h, ":zz", 3) == HEX_OK);      /* after EOF: ignored */
+    }
+}
+
+/* The RAM size option: 16K, 32K or 64K are mapped from 0000, nothing above, the
+ * program memory follows, and the memory map says what is where.
+ *
+ * Author: Thomas Dzubin */
+static void test_ram_sizes(void)
+{
+    static elf_t m;
+    program_target_t t;
+    char note[40];
+
+    elf_init(&m);
+    elf_program_target(&m, &t);
+    CHECK(m.ram_size == 65536 && t.size == 65536);
+    m.cpu.mem_write(&m, 0xC000, 0x99);
+    t.ram_press(t.ctx, note, sizeof note);                  /* 64K goes round to 16K */
+    CHECK(m.ram_size == 16384 && t.size == 16384 && strstr(note, "16K") != NULL);
+    CHECK(strstr(t.ram_text(t.ctx), "16K") != NULL);
+    CHECK(m.cpu.mem_read(&m, 0xC000) == ELF_UNMAPPED_READ);
+    m.cpu.mem_write(&m, 0x4000, 0x55);                      /* ignored */
+    CHECK(m.cpu.mem_read(&m, 0x4000) == ELF_UNMAPPED_READ);
+    CHECK(m.cpu.mem_read(&m, 0x3FFF) == 0);
+    CHECK(membus_page_kind(&m.bus, 0x3F) == MEMBUS_KIND_RAM);
+    CHECK(membus_page_kind(&m.bus, 0x40) == MEMBUS_KIND_NONE);
+    CHECK(membus_page_kind(&m.bus, 0xE0) == MEMBUS_KIND_DEVICE);   /* the VDU */
+    t.ram_press(t.ctx, note, sizeof note);
+    CHECK(m.ram_size == 32768 && membus_page_kind(&m.bus, 0x7F) == MEMBUS_KIND_RAM);
+    CHECK(membus_page_kind(&m.bus, 0x80) == MEMBUS_KIND_NONE);
+    t.ram_press(t.ctx, note, sizeof note);
+    CHECK(m.ram_size == 65536 && m.cpu.mem_read(&m, 0xC000) == 0);   /* what was above is gone */
+    elf_set_ram_size(&m, 20000);                            /* the next size up */
+    CHECK(m.ram_size == 32768);
+
+    program_target_load(&t, m.ram, 100000);                 /* too long: cut to the size */
+    elf_load_image(&m, m.ram, 100000);
+    CHECK(m.ram_size == 32768);
+}
+
+/* The serial line: a character sent by switching a line at the bit time comes out,
+ * and a typed character is turned into the right levels on the flag line.
+ *
+ * Author: Thomas Dzubin */
+static void test_serial(void)
+{
+    static serial_t s;
+    unsigned bit = 50, i, k;
+    bool q;
+    int c, seen = 0;
+
+    serial_init(&s);
+    serial_tick(&s, false);                         /* off: nothing happens */
+    CHECK(serial_receive(&s) == -1 && serial_flag_high(&s));
+    serial_set_speed(&s, 4800, 223721);
+    CHECK(s.enabled && s.bit_cycles == 47);
+    bit = s.bit_cycles;
+
+    /* 'A' = 0x41, inverted: idle Q low, a 0 bit is Q high */
+    for (i = 0; i < 5; i++)
+        serial_tick(&s, false);
+    for (k = 0; k < 10; k++) {                      /* start, 8 data, stop */
+        int level = (k == 0) ? 0 : (k == 9) ? 1 : (0x41 >> (k - 1)) & 1;
+
+        q = !level;
+        for (i = 0; i < bit; i++)
+            serial_tick(&s, q);
+    }
+    for (i = 0; i < 2 * bit; i++)
+        serial_tick(&s, false);
+    c = serial_receive(&s);
+    CHECK(c == 0x41 && serial_receive(&s) == -1);
+
+    s.inverted = false;                             /* direct: idle high */
+    for (k = 0; k < 10; k++) {
+        int level = (k == 0) ? 0 : (k == 9) ? 1 : (0x5A >> (k - 1)) & 1;
+
+        for (i = 0; i < bit; i++)
+            serial_tick(&s, level != 0);
+    }
+    for (i = 0; i < 2 * bit; i++)
+        serial_tick(&s, true);
+    CHECK(serial_receive(&s) == 0x5A);
+
+    /* typed 'C' = 0x43: start (low), 8 data bits, then high */
+    CHECK(serial_send(&s, 0x43));
+    serial_tick(&s, true);
+    CHECK(!serial_flag_high(&s));                   /* the start bit */
+    for (k = 1; k <= 8; k++) {
+        for (i = 0; i < bit; i++)
+            serial_tick(&s, true);
+        CHECK(serial_flag_high(&s) == (((0x43 >> (k - 1)) & 1) != 0));
+        seen++;
+    }
+    for (i = 0; i < 4 * bit; i++)
+        serial_tick(&s, true);
+    CHECK(serial_flag_high(&s) && seen == 8);
 }
 
 /* A program that toggles Q in two equal count-down loops: the machine cycles

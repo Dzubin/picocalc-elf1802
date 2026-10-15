@@ -120,6 +120,34 @@ int plat_file_load(const char *name, uint8_t *data, uint32_t max, uint32_t *len)
     return PLAT_FILE_OK;
 }
 
+static FILE *read_file;                             /* the file being read in pieces */
+
+int plat_file_open(const char *name)
+{
+    char path[PLAT_PATH_MAX];
+
+    plat_file_close();
+    program_path(path, sizeof path, name);
+    read_file = fopen(path, "rb");
+    return read_file ? PLAT_FILE_OK : PLAT_FILE_NOT_FOUND;
+}
+
+int plat_file_read(uint8_t *data, uint32_t max, uint32_t *got)
+{
+    *got = 0;
+    if (!read_file)
+        return PLAT_FILE_FAILED;
+    *got = (uint32_t)fread(data, 1, max, read_file);
+    return PLAT_FILE_OK;
+}
+
+void plat_file_close(void)
+{
+    if (read_file)
+        fclose(read_file);
+    read_file = NULL;
+}
+
 static int has_ext(const char *name, const char *ext)
 {
     size_t n = strlen(name);

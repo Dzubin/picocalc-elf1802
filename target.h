@@ -39,6 +39,13 @@ typedef struct {
     void       (*remap)(void *ctx); /* map the memory again, with the ROM images that are
                                        fitted now (NULL if the machine has no memory map) */
 
+    /* A line of the file menu to choose how much RAM the machine has: the key,
+     * the text of the line, and what pressing it does (the next size; it puts a
+     * note in note and changes size above). ram_key is 0 if the size is fixed. */
+    char         ram_key;
+    const char *(*ram_text)(void *ctx);
+    void       (*ram_press)(void *ctx, char *note, size_t note_size);
+
     void        *ctx;               /* what the functions above are given     */
 } program_target_t;
 

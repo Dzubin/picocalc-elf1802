@@ -41,6 +41,11 @@ int plat_file_begin(const char *name);
 int plat_file_write(const uint8_t *data, uint32_t len);
 int plat_file_end(void);
 int plat_file_load(const char *name, uint8_t *data, uint32_t max, uint32_t *len);
+/* A file read in pieces (for a long .HEX file): open it, read up to max bytes
+ * at a time (*got is 0 at the end of the file), close it; only one at a time. */
+int plat_file_open(const char *name);
+int plat_file_read(uint8_t *data, uint32_t max, uint32_t *got);
+void plat_file_close(void);
 int plat_file_list(char names[][PLAT_NAME_MAX], int max, int *count, int kind);
 
 /* Sound: signed 16-bit mono samples at PLAT_AUDIO_RATE, played in order as
