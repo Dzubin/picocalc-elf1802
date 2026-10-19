@@ -178,34 +178,62 @@ static void run_collect(mcard_t *m, uint32_t cycles, char *out, size_t size)
     out[n] = '\0';
 }
 
-/* The built-in monitor: it says who it is, and echoes what is typed. */
+/* Type a line to the monitor one character at a time, as a person would: each
+ * waits for the monitor to echo it. What the card sends back is added to out. */
+static void type_line(mcard_t *m, const char *text, char *out, size_t size)
+{
+    for (; *text; text++) {
+        CHECK(mcard_key(m, (uint8_t)*text));
+        run_collect(m, 7000, out, size);
+    }
+}
+
+/* The built-in monitor: it says who it is, dumps and changes memory, and runs
+ * a program. */
 static void test_monitor(void)
 {
     static mcard_t m;
-    char out[128] = "";
+    static char out[4096];
 
+    out[0] = '\0';
     mcard_init(&m, MCARD_MONITOR, MCARD_MONITOR_SIZE);
     mcard_set_switches(&m, true, false, true);              /* CLEAR */
     mcard_run(&m, 40);
     mcard_in_button(&m, true);                              /* Rev L: IN held ... */
     mcard_set_switches(&m, true, true, true);               /* ... CLR up: start at 8000 */
-    run_collect(&m, 40000, out, sizeof out);
-    CHECK(strcmp(out, "MCMON 1802 MEMBERSHIP CARD\r\n") == 0);
+    run_collect(&m, 60000, out, sizeof out);
+    CHECK(strcmp(out, "MCMON 1802 MEMBERSHIP CARD\r\n\r\n>") == 0);
     mcard_in_button(&m, false);
 
-    out[0] = '\0';
-    CHECK(mcard_key(&m, 'K'));
-    run_collect(&m, 4000, out, sizeof out);
-    CHECK(strcmp(out, "K") == 0);
-    out[0] = '\0';
-    CHECK(mcard_key(&m, '7'));
-    run_collect(&m, 4000, out, sizeof out);
-    CHECK(strcmp(out, "7") == 0);
-    out[0] = '\0';
-    CHECK(mcard_key(&m, 0x0D));
-    run_collect(&m, 6000, out, sizeof out);
-    CHECK(strcmp(out, "\r\n") == 0);                        /* CR gets its line feed */
+    out[0] = '\0';                                          /* M: put bytes in memory */
+    type_line(&m, "m0100 7B7a 3000", out, sizeof out);      /* lower case is fine */
+    type_line(&m, "\r", out, sizeof out);
+    run_collect(&m, 7000, out, sizeof out);
+    CHECK(m.ram[0x100] == 0x7B && m.ram[0x101] == 0x7A && m.ram[0x102] == 0x30 &&
+          m.ram[0x103] == 0x00);
+    CHECK(strstr(out, "M 0100") != NULL && strstr(out, "0100:") != NULL);
+    CHECK(strchr(out, '>') != NULL);                        /* and a new prompt */
+
+    out[0] = '\0';                                          /* D: show them */
+    type_line(&m, "D0100", out, sizeof out);
+    run_collect(&m, 350000, out, sizeof out);
+    CHECK(strstr(out, "0100: 7B 7A 30 00 00") != NULL);
+    CHECK(strstr(out, "0130: 00") != NULL);                 /* four lines of sixteen */
+
+    out[0] = '\0';                                          /* a bad digit */
+    type_line(&m, "DZ", out, sizeof out);
+    run_collect(&m, 20000, out, sizeof out);
+    CHECK(strchr(out, '?') != NULL);
+
+    out[0] = '\0';                                          /* G: run a program */
+    type_line(&m, "M0200 7B 30 00\r", out, sizeof out);     /* SEQ, BR 0200 */
+    run_collect(&m, 7000, out, sizeof out);
+    CHECK(!m.cpu.q);
+    type_line(&m, "G0200", out, sizeof out);
+    run_collect(&m, 20000, out, sizeof out);
+    CHECK(m.cpu.q && m.cpu.r[0] < 0x0300 && m.cpu.r[0] >= 0x0200);
 }
+
 
 int main(void)
 {

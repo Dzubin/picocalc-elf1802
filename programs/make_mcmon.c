@@ -19,7 +19,7 @@
 
 #define SOURCE_FILE   "MCMON.ASM"
 #define HEADER_FILE   "../mcard_monitor.h"
-#define SOURCE_MAX    8192
+#define SOURCE_MAX    32768
 
 extern const isa_t isa_1802;
 
