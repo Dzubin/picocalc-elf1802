@@ -328,8 +328,8 @@ images, memory map, power on again). As on the real card it starts with CLR down
 toggle a program in, put CLR down and WAIT down (LOAD), set the data switches and press IN; with READ/WRITE
 down IN shows the byte at the address instead. Holding IN while CLR goes up starts the program at 8000.
 
-The card has a small serial monitor of its own in ROM at 8000 (`programs/MCMON.ASM`, made into
-`mcard_monitor.h` by `programs/make_mcmon.c`): it prints its name and echoes what you type. Put your own
+The card has a serial monitor of its own in ROM at 8000 (`programs/MCMON.ASM`, made into
+`mcard_monitor.h` by `programs/make_mcmon.c`). It prompts with `>` and has three commands (letters in either case, hex digits, ENTER ends a line): `D hhhh` dumps 64 bytes from that address, `M hhhh` puts bytes in memory from that address (type two hex digits for each byte, ENTER to finish) and `G hhhh` runs the program there (R0 is the program counter and X is 0; to come back, jump to 8000); `?` lists them. Put your own
 `.ROM` file in the `ELF1802` folder and fit it from the menu to replace it. Q is inverted (Rev J and later);
 the menu can turn it round for earlier front panels. The input port number for the data switches (4) is
 assumed to match `OUT 4` and is not confirmed. The checks are in `tests/test_mcard.c`.
@@ -573,7 +573,7 @@ Open this folder, pick the board (Pico or Pico 2) and press Compile.
 
 ### From a terminal
 
-Set `PICO_SDK_PATH` to your Pico SDK checkout (SDK 2.2.0), then:
+Set `PICO_SDK_PATH` to your Pico SDK checkout (SDK 2.3.1), then:
 
 ```bash
 cmake -B build-rp2350 -G Ninja -DPICO_BOARD=pico2
@@ -678,25 +678,34 @@ at [`picocalc-text-starter-main/LICENSE`](picocalc-text-starter-main/LICENSE),
 Copyright © 2025 Blair Leduc. The Raspberry Pi Pico SDK it builds against is
 licensed separately by Raspberry Pi Ltd. (BSD-3-Clause).
 
-The vendored copy is unchanged except for **one small fix** in
-`picocalc-text-starter-main/drivers/fat32.c`: `get_next_free_cluster()` now
-advances its search hint past the cluster it just handed out; without that,
-every later allocation re-scans the clusters already given out, and a long
-sequential write to the SD card looks hung. Apart from the two further fixes below, everything else is exactly as downloaded.
+The vendored copy is Blair Leduc's `picocalc-text-starter` as it was on 2026-10-18
+(commit `85a002e`, "Upgrade to SDK 2.3.1"), with **four small local fixes** that
+are not in his repository yet:
 
-Two more small fixes were made in `picocalc-text-starter-main/drivers/` after that one.
-In `fat32.c`, `fat32_dir_read()` skips deleted entries before it looks at long-name
-parts and bounds-checks the long-name offset (a deleted long-name part used to be read
-as a live one and wrote 13 bytes at `filename + 468` of a 256-byte stack buffer), and
-`link_entry()` compares the 0xE5 deleted marker as an unsigned byte. In `sdcard.c`, the
-wait for a busy card is timed by the clock (0.5 s) and not by counting 10000 bytes,
-every command except CMD0 waits for the card first, and a write returns an error if the
-card is still busy after it (without that, a card that was still programming a block
-ignored the next command, and reads and writes failed on good sectors). Both were sent
-to the author as pull requests
-([#32](https://github.com/BlairLeduc/picocalc-text-starter/pull/32) and
-[#33](https://github.com/BlairLeduc/picocalc-text-starter/pull/33)).
+1. In `picocalc-text-starter-main/drivers/fat32.c`, `fat32_write()` no longer walks
+   the cluster chain, allocating a cluster at a cluster-aligned end of file, before
+   it allocates the clusters the write needs. That walk could leave a cluster
+   unreachable (a leak). A write of zero bytes returns at once.
+2. In the same file, `fat32_dir_read()` copies the last part of a long file name of
+   248 to 255 characters as far as it fits; upstream drops that part.
+3. In `picocalc-text-starter-main/drivers/sdcard.c`, a command is not sent to a card
+   that is still busy after the 0.5 s wait.
+4. In `picocalc-text-starter-main/drivers/lcd.c`, `lcd_putstr()` cuts a string off at
+   the right edge of the display, because the line buffer holds exactly one row of
+   text.
 
-The vendored `lcd_putstr()` does not stop at the right edge of the screen, so
-every string this program draws is cut to fit the 40-column text grid before
-it is passed to it.
+Earlier versions of this copy carried other local changes, and those are now in
+the upstream code: the search-hint fix in `get_next_free_cluster()`
+([#30](https://github.com/BlairLeduc/picocalc-text-starter/pull/30)), the
+deleted-entry fixes in `fat32_dir_read()` and `link_entry()`
+([#32](https://github.com/BlairLeduc/picocalc-text-starter/pull/32)), the timed
+busy-card wait in `sdcard.c`
+([#33](https://github.com/BlairLeduc/picocalc-text-starter/pull/33)) and
+`lcd_unblit()` ([#31](https://github.com/BlairLeduc/picocalc-text-starter/pull/31)).
+`audio.pio` is exactly as downloaded: it now accepts 20 to 20000 Hz
+([#29](https://github.com/BlairLeduc/picocalc-text-starter/pull/29)), where it used
+to accept only 100 to 2000 Hz. Everything else is exactly as downloaded.
+
+The vendored `lcd_putstr()` now cuts a string off at the right edge of the screen (the local
+fix above). This program also cuts every string to fit the 40-column text grid before it is
+passed to it, so it does not depend on that.

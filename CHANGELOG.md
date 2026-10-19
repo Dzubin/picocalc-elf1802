@@ -6,6 +6,15 @@ the version here matches the `VERSION` define in `elf1802_const.h`.
 
 ## [Unreleased]
 
+- Updated the vendored `picocalc-text-starter` to Blair Leduc's code of 2026-10-18 (commit
+  `85a002e`) and moved to Pico SDK 2.3.1. The search-hint, deleted-entry and busy-card fixes this
+  copy carried are in his code now; four small local fixes remain (README, Third-party). The audio
+  driver in it now sounds 20 to 20000 Hz, where it used to be silent outside 100 to 2000 Hz.
+- The Membership Card's monitor (`programs/MCMON.ASM`) is now a real one: `D hhhh` dumps 64 bytes,
+  `M hhhh` puts bytes in memory and `G hhhh` runs a program, with a prompt, upper or lower case
+  and `?` for the list. It uses a small call and return convention of its own (SEP 4 and SEP 5),
+  so its routines can call each other. `tests/test_mcard.c` types to it like a person (73 checks).
+
 ## [V0.20A] - 2026-10-15
 
 - The 1802 Membership Card board ([Lee Hart's project](https://www.sunrise-ev.com/1802.htm); `mcard.c`, `mcard_const.h`; checked by `tests/test_mcard.c`),

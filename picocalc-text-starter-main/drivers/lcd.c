@@ -525,12 +525,20 @@ void lcd_putc(uint8_t column, uint8_t row, uint8_t c)
     lcd_blit(char_buffer, column * font->width, row * GLYPH_HEIGHT, font->width, GLYPH_HEIGHT);
 }
 
-// Draw a string at the specified position
+// Draw a string at the specified position. The string is cut off at the right
+// edge of the display: line_buffer holds exactly one row of text (WIDTH x
+// GLYPH_HEIGHT pixels), so a longer string would write past the end of it.
 void lcd_putstr(uint8_t column, uint8_t row, const char *str)
 {
+    int columns = lcd_get_columns();
     int len = strlen(str);
     int pos = 0;
-    while (*str)
+
+    if (column >= columns)
+        return;
+    if (len > columns - column)
+        len = columns - column;
+    while (pos < len)
     {
         uint16_t *buffer = line_buffer + (pos++ * font->width);
         const uint8_t *glyph = &font->glyphs[*str++ * GLYPH_HEIGHT];
